@@ -34,7 +34,16 @@ React form ──POST /api/screenings──▶ FastAPI ──▶ scikit-learn pi
 
 ## Results
 
-CI's `train` job trains on the real NHANES data on every push and writes the held-out metrics to the job summary and the `model` artifact (`metrics.json`).
+Trained on **5,674 adults** from NHANES 2015–2016, of whom 7.3% reported coronary heart disease, angina, or a heart attack. Scores are on a stratified 20% held-out test set (1,135 people), with a 0.5 threshold:
+
+| Model | ROC AUC | Recall | Precision |
+| --- | --- | --- | --- |
+| **Logistic regression (served)** | **0.845** | **0.819** | 0.202 |
+| Random forest (baseline) | 0.851 | 0.747 | 0.215 |
+
+The random forest's AUC is almost the same, so the explainable model loses essentially no ranking power and catches more of the people who have heart disease. Precision is low by design: at a 7% base rate, a screener tuned for recall flags many people who turn out to be fine. Flagged people are a group to follow up with, not people who are likely sick.
+
+CI's `train` job retrains on the real data on every push and writes these metrics to the job summary and the `model` artifact.
 
 ## Run it
 
