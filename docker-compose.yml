@@ -1,0 +1,14 @@
+services:
+  api:
+    build: ./backend
+    volumes:
+      - screenings:/data
+  web:
+    build: ./frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
+volumes:
+  screenings:
