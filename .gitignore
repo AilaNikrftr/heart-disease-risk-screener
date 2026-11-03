@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.db
+
+# NHANES downloads and trained models are rebuilt by ml.fetch_data / ml.train
+backend/ml/data/
+backend/ml/artifacts/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+.env
