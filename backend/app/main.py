@@ -8,10 +8,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import Screening, make_sessionmaker
+from app.fhir import screening_to_bundle
 from app.predictor import Predictor
 from app.schemas import Health, ScreeningInput, ScreeningResult
 
@@ -94,6 +96,14 @@ def create_app(model_path: Path | None = None, database_url: str | None = None) 
             select(Screening).order_by(Screening.created_at.desc(), Screening.id.desc()).limit(limit)
         )
         return [to_result(r) for r in rows]
+
+    @app.get("/api/screenings/{screening_id}/fhir")
+    def screening_as_fhir(screening_id: int, db: Session = Depends(get_db)) -> JSONResponse:
+        row = db.get(Screening, screening_id)
+        if row is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Screening not found")
+        bundle = screening_to_bundle(row.id, row.created_at, row.answers, row.score, row.band)
+        return JSONResponse(bundle, media_type="application/fhir+json")
 
     @app.delete("/api/screenings/{screening_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_screening(screening_id: int, db: Session = Depends(get_db)) -> None:

@@ -25,6 +25,11 @@ export function ResultCard({ result }: { result: Screening }) {
       ) : (
         <p>None of your answers pushed the score up.</p>
       )}
+      <p>
+        <a href={`/api/screenings/${result.id}/fhir`} download={`screening-${result.id}.fhir.json`}>
+          Export as FHIR R4 (JSON)
+        </a>
+      </p>
       <p className="disclaimer">{result.disclaimer}</p>
     </section>
   )
