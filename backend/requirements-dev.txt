@@ -2,3 +2,6 @@
 pytest>=8
 httpx>=0.27
 fhir.resources>=8
+boto3>=1.34
+moto[dynamodb,sqs]>=5
+cfn-lint>=1
