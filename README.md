@@ -5,6 +5,8 @@ A full-stack web app that screens adults for coronary heart disease risk from ni
 - **Model:** scikit-learn logistic regression trained on the CDC's **NHANES 2015–2016** survey (adults 20+)
 - **API:** FastAPI, with screenings stored in SQLite
 - **Frontend:** React + TypeScript (Vite)
+- **Interoperability:** each screening exports as a **FHIR R4** Bundle (RiskAssessment + LOINC-coded Observations)
+- **Serverless option:** the same model on **AWS Lambda + API Gateway**, with results in **DynamoDB** and batch scoring through **SQS** (SAM template)
 - **Tooling:** pytest and Vitest tests, GitHub Actions CI, Docker Compose
 
 > Educational project, not a medical device. The score is not a diagnosis.
@@ -79,7 +81,7 @@ npm run dev                 # http://localhost:5173, proxies /api to :8000
 ### Tests
 
 ```bash
-cd backend && pytest        # features, training, API
+cd backend && pytest        # features, training, API, FHIR export, Lambda handlers
 cd frontend && npm test     # form, results, error messages
 ```
 
@@ -92,9 +94,48 @@ The backend tests never download NHANES. They generate small tables with the sam
 | `GET` | `/api/health` | Whether a model is loaded, plus its metrics |
 | `POST` | `/api/screenings` | Score a profile and store it |
 | `GET` | `/api/screenings?limit=20` | Recent screenings, newest first |
+| `GET` | `/api/screenings/{id}/fhir` | The screening as a FHIR R4 Bundle (`application/fhir+json`) |
 | `DELETE` | `/api/screenings/{id}` | Delete a screening |
 
 Interactive docs: http://localhost:8000/docs
+
+## FHIR export
+
+`GET /api/screenings/{id}/fhir` (also a link under each result in the UI) returns a FHIR R4 `collection` Bundle that an EHR can read without knowing this app:
+
+- a **RiskAssessment** with the score (`probabilityDecimal`), the band coded with HL7's `risk-probability` system, the method, and `basis` references to every input
+- one **Observation** per measurement, coded with **LOINC** and **UCUM** units: age `30525-0`, BMI `39156-5`, systolic `8480-6` / diastolic `8462-4` blood pressure, total cholesterol `2093-3`, HDL `2085-9`, smoking status `72166-2` (SNOMED `77176002` for current smokers), plus self-reported diabetes
+- an anonymous **Patient** (gender only, no name or identifiers) as the required subject
+
+The tests validate every exported bundle with the `fhir.resources` R4B models.
+
+## Serverless deployment (AWS)
+
+`backend/serverless/` runs the same model and validation code as a serverless API:
+
+```
+API Gateway (HTTP API)
+  POST /screenings      -> Lambda -> score -> DynamoDB
+  GET  /screenings/{id} -> Lambda -> DynamoDB
+  POST /batches         -> Lambda -> SQS (up to 100 profiles, validated first)
+                                      |
+                           SQS -> worker Lambda -> score each -> DynamoDB (batch_id GSI)
+                                      |  failed messages retried, then dead-letter queue
+  GET  /batches/{id}    -> Lambda -> DynamoDB query on batch_id
+```
+
+- **Container-image Lambdas.** scikit-learn and pandas exceed the 250 MB zip limit, so all functions share one image (`serverless/Dockerfile`, which trains the model at build time) and each picks its handler with `ImageConfig.Command`.
+- **Partial batch failures.** The worker returns `batchItemFailures`, so SQS retries only the bad messages, and the DLQ catches anything that fails three times.
+- **Least-privilege IAM.** Each function gets only the DynamoDB read/write or SQS send policy it needs.
+- **Tested without an AWS account.** `tests/test_serverless.py` runs every handler against moto's mocked DynamoDB and SQS, including the queue-to-worker hand-off. CI also lints the template with `cfn-lint` and builds the Lambda image.
+
+Deploy it with the AWS SAM CLI:
+
+```bash
+cd backend/serverless
+sam build
+sam deploy --guided      # prints ApiUrl when done
+```
 
 ## Limitations and next steps
 
