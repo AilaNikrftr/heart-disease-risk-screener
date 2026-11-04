@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Heart Disease Risk Screener, serverless: API Gateway HTTP API + Lambda (container image)
+  + DynamoDB for results + SQS (with a dead-letter queue) for batch scoring.
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 1024
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref ScreeningsTable
+        QUEUE_URL: !Ref BatchQueue
+
+Resources:
+  Api:
+    Type: AWS::Serverless::HttpApi
+
+  ScreeningsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: id, AttributeType: S }
+        - { AttributeName: batch_id, AttributeType: S }
+      KeySchema:
+        - { AttributeName: id, KeyType: HASH }
+      GlobalSecondaryIndexes:
+        - IndexName: batch_id-index
+          KeySchema:
+            - { AttributeName: batch_id, KeyType: HASH }
+          Projection: { ProjectionType: ALL }
+
+  BatchDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+
+  BatchQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 180 # 6x the worker timeout, as AWS recommends
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt BatchDeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  CreateScreeningFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig: { Command: ["serverless.handlers.create_screening"] }
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref ScreeningsTable }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /screenings, Method: POST }
+    Metadata: &image
+      Dockerfile: serverless/Dockerfile
+      DockerContext: ..
+      DockerTag: python3.12
+
+  GetScreeningFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig: { Command: ["serverless.handlers.get_screening"] }
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref ScreeningsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/screenings/{id}", Method: GET }
+    Metadata: *image
+
+  SubmitBatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig: { Command: ["serverless.handlers.submit_batch"] }
+      Policies:
+        - SQSSendMessagePolicy: { QueueName: !GetAtt BatchQueue.QueueName }
+      Events:
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: /batches, Method: POST }
+    Metadata: *image
+
+  GetBatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig: { Command: ["serverless.handlers.get_batch"] }
+      Policies:
+        - DynamoDBReadPolicy: { TableName: !Ref ScreeningsTable }
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref Api, Path: "/batches/{id}", Method: GET }
+    Metadata: *image
+
+  ProcessBatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageConfig: { Command: ["serverless.handlers.process_batch"] }
+      Policies:
+        - DynamoDBWritePolicy: { TableName: !Ref ScreeningsTable }
+      Events:
+        Queue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt BatchQueue.Arn
+            BatchSize: 10
+            FunctionResponseTypes: [ReportBatchItemFailures]
+    Metadata: *image
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the HTTP API
+    Value: !Sub "https://${Api}.execute-api.${AWS::Region}.amazonaws.com"
+  TableName:
+    Value: !Ref ScreeningsTable
+  QueueUrl:
+    Value: !Ref BatchQueue
