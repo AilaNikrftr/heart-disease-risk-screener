@@ -1,7 +1,7 @@
 # Lambda container image. scikit-learn + pandas are too large for a zip
 # deployment (250 MB unzipped limit), so the functions ship as one image and
 # each function picks its handler through ImageConfig.Command.
-FROM public.ecr.aws/lambda/python:3.12
+FROM public.ecr.aws/lambda/python:3.15
 
 COPY requirements.txt ${LAMBDA_TASK_ROOT}/
 RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
