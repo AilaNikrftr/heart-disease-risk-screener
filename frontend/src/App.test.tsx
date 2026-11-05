@@ -88,6 +88,10 @@ describe('App', () => {
     const card = within(heading.closest('section')!)
     expect(card.getByText('91')).toBeInTheDocument()
     expect(card.getByText('Diabetes')).toBeInTheDocument()
+    expect(card.getByRole('link', { name: /Export as FHIR/ })).toHaveAttribute(
+      'href',
+      '/api/screenings/1/fhir',
+    )
     expect(await screen.findByRole('heading', { name: 'Recent screenings' })).toBeInTheDocument()
 
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')!
