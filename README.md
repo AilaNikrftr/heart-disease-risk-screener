@@ -1,5 +1,7 @@
 # Heart Disease Risk Screener
 
+[![CI](https://github.com/AilaNikrftr/heart-disease-risk-screener/actions/workflows/ci.yml/badge.svg)](https://github.com/AilaNikrftr/heart-disease-risk-screener/actions/workflows/ci.yml)
+
 A full-stack web app that screens adults for coronary heart disease risk from nine routine measurements: age, sex, BMI, blood pressure, cholesterol, smoking and diabetes.
 
 - **Model:** scikit-learn logistic regression trained on the CDC's **NHANES 2015–2016** survey (adults 20+)
